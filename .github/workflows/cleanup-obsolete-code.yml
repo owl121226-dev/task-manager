@@ -1,0 +1,51 @@
+name: Cleanup obsolete task manager code
+on:
+  push:
+    paths:
+      - '.github/workflows/cleanup-obsolete-code.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove obsolete code
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          replacements = [
+            ('.groupBox .row:last-child{border-bottom:0}.groupSpacer{height:var(--row);background:#fff}.groupLabel{', '.groupBox .row:last-child{border-bottom:0}.groupLabel{'),
+            ('.title{display:flex;align-items:center;gap:4px}.titleCheck{width:18px;height:18px;flex:none;margin:0 3px 0 2px}.title .insert{flex:none}.drag{', '.title{display:flex;align-items:center;gap:4px}.titleCheck{width:18px;height:18px;flex:none;margin:0 3px 0 2px}.drag{'),
+            ('.dateInput::placeholder{color:#b0b7c0}.actions{display:flex;justify-content:flex-end;gap:2px}.mini{padding:6px 5px}.mini.insert{font-size:12px;font-weight:700;color:#2563eb}.mini.del:hover{', '.dateInput::placeholder{color:#b0b7c0}.actions{display:flex;justify-content:flex-end;gap:2px}.mini{padding:6px 5px}.mini.del:hover{'),
+            ('<input type="hidden" id="editId"><input type="hidden" id="parentId"><input type="hidden" id="insertAfterId">', '<input type="hidden" id="editId"><input type="hidden" id="parentId">'),
+            ("const state={tasks:[],collapsed:{},spacers:[],spacersInitialized:false,groupingInitialized:false,filter:'all',view:new Date(new Date().getFullYear(),new Date().getMonth(),1)};", "const state={tasks:[],collapsed:{},filter:'all',view:new Date(new Date().getFullYear(),new Date().getMonth(),1)};"),
+            ("function load(){try{const x=JSON.parse(localStorage.getItem(KEY));if(x){state.tasks=x.tasks||[];state.collapsed=x.collapsed||{};state.spacers=Array.isArray(x.spacers)?x.spacers:[];state.spacersInitialized=!!x.spacersInitialized;state.groupingInitialized=!!x.groupingInitialized}}catch(e){}}", "function load(){try{const x=JSON.parse(localStorage.getItem(KEY));if(x){state.tasks=x.tasks||[];state.collapsed=x.collapsed||{}}}catch(e){}}"),
+            ("function save(){localStorage.setItem(KEY,JSON.stringify({tasks:state.tasks,collapsed:state.collapsed,spacers:state.spacers,spacersInitialized:state.spacersInitialized,groupingInitialized:state.groupingInitialized}))}", "function save(){localStorage.setItem(KEY,JSON.stringify({tasks:state.tasks,collapsed:state.collapsed}))}"),
+            ("function normTitle(s){return String(s||'').replace(/[\\s\\u3000]+/g,'')}\nconst TOP_GROUP_TITLES=new Set(['当座確認','電債入金確認','売掛金照合','メトリー確認','水道局入札準備']);\nconst KEEP_COMPLETED_TITLES=new Set(['当座確認','電債入金確認','売掛金照合']);\nfunction initThreeGroups(){if(state.groupingInitialized)return;for(const t of state.tasks){const n=normTitle(t.title);if(TOP_GROUP_TITLES.has(n))t.category='top';if(KEEP_COMPLETED_TITLES.has(n))t.keepCompleted=true}state.groupingInitialized=true;save()}\n", ''),
+            ("function initFixedSpacers(){if(state.spacersInitialized)return;const roots=children(null),targets=['当座確認','東備消防打合せ','売上確定','早〆請求書'],ids=[];for(const target of targets){const i=roots.findIndex(t=>normTitle(t.title)===target);if(i>0)ids.push(roots[i-1].id)}state.spacers=[...new Set(ids)];state.spacersInitialized=true;save()}\n", ''),
+            ("a.append(mini('＋','サブタスク追加',()=>openDlg(null,t.id,null)),mini('✎','編集',()=>openDlg(t.id)),mini('×','削除',()=>remove(t.id),'del'));", "a.append(mini('＋','サブタスク追加',()=>openDlg(null,t.id)),mini('✎','編集',()=>openDlg(t.id)),mini('×','削除',()=>remove(t.id),'del'));"),
+            ("function openDlg(id=null,pid=null,afterId=null){const t=id?state.tasks.find(x=>x.id===id):null,p=pid?state.tasks.find(x=>x.id===pid):null;$('editId').value=id||'';$('parentId').value=pid||'';$('insertAfterId').value=afterId||'';$('dlgTitle').textContent=t?'タスクを編集':afterId?'この直後にタスクを追加':pid?'サブタスクを追加':'タスクを追加';$('title').value=t?.title||'';$('start').value=short(t?.start||'');$('end').value=short(t?.end||'');$('category').value=t?.category||p?.category||'normal';$('keepCompleted').checked=!!t?.keepCompleted;$('dlg').showModal();setTimeout(()=>$('title').focus(),20)}", "function openDlg(id=null,pid=null){const t=id?state.tasks.find(x=>x.id===id):null,p=pid?state.tasks.find(x=>x.id===pid):null;$('editId').value=id||'';$('parentId').value=pid||'';$('dlgTitle').textContent=t?'タスクを編集':pid?'サブタスクを追加':'タスクを追加';$('title').value=t?.title||'';$('start').value=short(t?.start||'');$('end').value=short(t?.end||'');$('category').value=t?.category||p?.category||'normal';$('keepCompleted').checked=!!t?.keepCompleted;$('dlg').showModal();setTimeout(()=>$('title').focus(),20)}"),
+            ("function insertTaskAfter(task,afterId){const pid=task.parentId||null;const sibs=children(pid);const idx=sibs.findIndex(x=>x.id===afterId);if(idx<0){task.order=nextOrder(pid);state.tasks.push(task);return}state.tasks.push(task);const reordered=sibs.slice();reordered.splice(idx+1,0,task);reordered.forEach((x,i)=>x.order=(i+1)*10)}\n", ''),
+            ("function remove(id){const t=state.tasks.find(x=>x.id===id),kids=descendants(id);if(!t||!confirm(kids.length?`「${t.title}」とサブタスク${kids.length}件を削除しますか？`:`「${t.title}」を削除しますか？`))return;const ids=new Set([id,...kids.map(x=>x.id)]),roots=children(null);state.spacers=state.spacers.map(sid=>{if(!ids.has(sid))return sid;const i=roots.findIndex(x=>x.id===sid);for(let j=i-1;j>=0;j--)if(!ids.has(roots[j].id))return roots[j].id;return null}).filter(Boolean);state.spacers=[...new Set(state.spacers)];state.tasks=state.tasks.filter(x=>!ids.has(x.id));save();render();notice('削除しました')}", "function remove(id){const t=state.tasks.find(x=>x.id===id),kids=descendants(id);if(!t||!confirm(kids.length?`「${t.title}」とサブタスク${kids.length}件を削除しますか？`:`「${t.title}」を削除しますか？`))return;const ids=new Set([id,...kids.map(x=>x.id)]);state.tasks=state.tasks.filter(x=>!ids.has(x.id));save();render();notice('削除しました')}"),
+            ("$('form').onsubmit=e=>{e.preventDefault();const id=$('editId').value||null,pid=$('parentId').value||null,afterId=$('insertAfterId').value||null,title=$('title').value.trim(),old=id?state.tasks.find(x=>x.id===id):null,p=pid?state.tasks.find(x=>x.id===pid):null;", "$('form').onsubmit=e=>{e.preventDefault();const id=$('editId').value||null,pid=$('parentId').value||null,title=$('title').value.trim(),old=id?state.tasks.find(x=>x.id===id):null,p=pid?state.tasks.find(x=>x.id===pid):null;"),
+            ("if(id){Object.assign(old,{title,start,end,category:$('category').value,keepCompleted:$('keepCompleted').checked})}else{const task={id:uid(),title,start,end,completed:false,parentId:pid,category:$('category').value,keepCompleted:$('keepCompleted').checked,order:nextOrder(pid)};if(afterId)insertTaskAfter(task,afterId);else state.tasks.push(task);if(pid)state.collapsed[pid]=false}save();$('dlg').close();render();notice(id?'更新しました':afterId?'途中に追加しました':'追加しました')};", "if(id){Object.assign(old,{title,start,end,category:$('category').value,keepCompleted:$('keepCompleted').checked})}else{const task={id:uid(),title,start,end,completed:false,parentId:pid,category:$('category').value,keepCompleted:$('keepCompleted').checked,order:nextOrder(pid)};state.tasks.push(task);if(pid)state.collapsed[pid]=false}save();$('dlg').close();render();notice(id?'更新しました':'追加しました')};"),
+            ("load();initThreeGroups();render();setTimeout(scrollToday,20);", "load();render();setTimeout(scrollToday,20);")
+          ]
+
+          for old,new in replacements:
+              assert old in s, old[:120]
+              s=s.replace(old,new,1)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+          node -e "const fs=require('fs');const s=fs.readFileSync('index.html','utf8');const m=s.match(/<script>([\\s\\S]*?)<\\/script>/);if(!m)process.exit(1);new Function(m[1]);"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Remove obsolete task manager code"
+          git push
