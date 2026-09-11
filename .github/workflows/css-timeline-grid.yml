@@ -1,0 +1,69 @@
+name: Optimize timeline grid rendering
+on:
+  push:
+    paths:
+      - '.github/workflows/css-timeline-grid.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Replace per-day row cells with CSS grid background
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          s=s.replace(
+            ".board{background:#fff;min-width:calc(var(--left) + var(--days)*var(--day))}.head,.row{display:grid;grid-template-columns:var(--left) calc(var(--days)*var(--day))}",
+            ".board{background:#fff;min-width:calc(var(--left) + var(--timelineW))}.head,.row{display:grid;grid-template-columns:var(--left) var(--timelineW)}",
+            1
+          )
+          s=s.replace(
+            ".groupLabel{height:var(--row);display:grid;grid-template-columns:var(--left) calc(var(--days)*var(--day));background:#fff}",
+            ".groupLabel{height:var(--row);display:grid;grid-template-columns:var(--left) var(--timelineW);background:#fff}",
+            1
+          )
+          old_css=".row:hover .left{background:#fbfcfe}.row.sub .left{background:#fcfcfd}.row.done .name{text-decoration:line-through;color:#9aa1aa}.days,.timeline{display:grid;grid-template-columns:repeat(var(--days),var(--day))}.days{background:#fff}.dh"
+          new_css=".row:hover .left{background:#fbfcfe}.row.sub .left{background:#fcfcfd}.row.done .name{text-decoration:line-through;color:#9aa1aa}.days{display:grid;grid-template-columns:repeat(var(--days),var(--day));background:#fff}.dh"
+          assert old_css in s
+          s=s.replace(old_css,new_css,1)
+
+          old_timeline_css=".timeline{position:relative;min-height:var(--row)}.cell{min-height:var(--row);border-right:1px solid #eef0f2}.bar"
+          new_timeline_css=".timeline{position:relative;min-height:var(--row);background-color:#fff;background-image:repeating-linear-gradient(to right,transparent 0 calc(var(--day) - 1px),#eef0f2 calc(var(--day) - 1px) var(--day)),linear-gradient(#fff3bf,#fff3bf),linear-gradient(to right,#fafafa 0 var(--day),transparent var(--day) var(--weekW)),linear-gradient(to right,#fafafa 0 var(--day),transparent var(--day) var(--weekW));background-size:var(--day) 100%,var(--day) 100%,var(--weekW) 100%,var(--weekW) 100%;background-position:0 0,var(--todayX) 0,var(--satX) 0,var(--sunX) 0;background-repeat:repeat-x,no-repeat,repeat-x,repeat-x}.bar"
+          assert old_timeline_css in s
+          s=s.replace(old_timeline_css,new_timeline_css,1)
+
+          old_head="function renderHead(){const y=state.view.getFullYear(),m=state.view.getMonth(),cnt=new Date(y,m+1,0).getDate(),today=day(new Date()),wd=['日','月','火','水','木','金','土'];$('board').style.setProperty('--days',cnt);$('month').textContent=`${y}年${m+1}月`;$('days').innerHTML='';for(let i=1;i<=cnt;i++){const d=new Date(y,m,i),el=document.createElement('div');el.className='dh'+((d.getDay()==0||d.getDay()==6)?' weekend':'')+(same(d,today)?' today':'');el.innerHTML=`<b>${i}</b><span>${wd[d.getDay()]}</span>`;$('days').appendChild(el)}}"
+          new_head="function renderHead(){const y=state.view.getFullYear(),m=state.view.getMonth(),cnt=new Date(y,m+1,0).getDate(),today=day(new Date()),wd=['日','月','火','水','木','金','土'],dayPx=38,firstDow=new Date(y,m,1).getDay(),board=$('board');board.style.setProperty('--days',cnt);board.style.setProperty('--timelineW',`${cnt*dayPx}px`);board.style.setProperty('--weekW',`${7*dayPx}px`);board.style.setProperty('--satX',`${((6-firstDow+7)%7)*dayPx}px`);board.style.setProperty('--sunX',`${((7-firstDow)%7)*dayPx}px`);board.style.setProperty('--todayX',y===today.getFullYear()&&m===today.getMonth()?`${(today.getDate()-1)*dayPx}px`:'-9999px');$('month').textContent=`${y}年${m+1}月`;$('days').innerHTML='';for(let i=1;i<=cnt;i++){const d=new Date(y,m,i),el=document.createElement('div');el.className='dh'+((d.getDay()==0||d.getDay()==6)?' weekend':'')+(same(d,today)?' today':'');el.innerHTML=`<b>${i}</b><span>${wd[d.getDay()]}</span>`;$('days').appendChild(el)}}"
+          assert old_head in s
+          s=s.replace(old_head,new_head,1)
+
+          old_timeline="function timeline(t){const y=state.view.getFullYear(),m=state.view.getMonth(),cnt=new Date(y,m+1,0).getDate(),tl=document.createElement('div');tl.className='timeline';const today=day(new Date());for(let i=1;i<=cnt;i++){const d=new Date(y,m,i),c=document.createElement('div');c.className='cell'+((d.getDay()==0||d.getDay()==6)?' weekend':'')+(same(d,today)?' today':'');tl.appendChild(c)}const s=date(t.start),e=date(t.end);if(s||e){const a=s||e,b=e||s,ms=new Date(y,m,1),me=new Date(y,m,cnt);if(a<=me&&b>=ms){const vs=a<ms?ms:a,ve=b>me?me:b,first=vs.getDate()-1,len=Math.floor((ve-vs)/86400000)+1,bar=document.createElement('div');bar.className='bar';bar.style.left=`calc(${first} * var(--day) + 3px)`;bar.style.width=`calc(${len} * var(--day) - 6px)`;bar.title=`${t.title}: ${short(t.start||t.end)} ～ ${short(t.end||t.start)}`;tl.appendChild(bar)}}return tl}"
+          new_timeline="function timeline(t){const y=state.view.getFullYear(),m=state.view.getMonth(),cnt=new Date(y,m+1,0).getDate(),tl=document.createElement('div');tl.className='timeline';const s=date(t.start),e=date(t.end);if(s||e){const a=s||e,b=e||s,ms=new Date(y,m,1),me=new Date(y,m,cnt);if(a<=me&&b>=ms){const vs=a<ms?ms:a,ve=b>me?me:b,first=vs.getDate()-1,len=Math.floor((ve-vs)/86400000)+1,bar=document.createElement('div');bar.className='bar';bar.style.left=`calc(${first} * var(--day) + 3px)`;bar.style.width=`calc(${len} * var(--day) - 6px)`;bar.title=`${t.title}: ${short(t.start||t.end)} ～ ${short(t.end||t.start)}`;tl.appendChild(bar)}}return tl}"
+          assert old_timeline in s
+          s=s.replace(old_timeline,new_timeline,1)
+
+          assert "$('category').value=t?.category||p?.category||'top';" in s
+          p.write_text(s,encoding='utf-8')
+          PY
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('index.html').read_text(encoding='utf-8')
+          assert '.cell{' not in s
+          assert "for(let i=1;i<=cnt;i++){const d=new Date(y,m,i),c=document.createElement('div')" not in s
+          m=re.search(r'<script>([\s\S]*?)</script>',s)
+          assert m
+          Path('/tmp/app.js').write_text(m.group(1),encoding='utf-8')
+          PY
+          node --check /tmp/app.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Render Gantt grid with CSS backgrounds"
+          git push
