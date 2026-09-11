@@ -28,7 +28,7 @@ const $=id=>document.getElementById(id),KEY='task-manager-v1';
 const state={tasks:[],collapsed:{},filter:'all',view:new Date(new Date().getFullYear(),new Date().getMonth(),1)};
 let dragging=null,autoScrollFrame=null,autoScrollSpeed=0;
 function uid(){return crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
-function load(){try{const x=JSON.parse(localStorage.getItem(KEY));if(x){state.tasks=(x.tasks||[]).map(t=>({...t,start:normalizeStored(t.start),end:normalizeStored(t.end)}));state.collapsed=x.collapsed||{}}}catch(e){}}
+function load(){try{const x=JSON.parse(localStorage.getItem(KEY));if(x){state.tasks=(x.tasks||[]).map(t=>({...t,start:normalizeStored(t.start),end:normalizeStored(t.end)}));state.collapsed=x.collapsed||{};save()}}catch(e){}}
 function save(){localStorage.setItem(KEY,JSON.stringify({tasks:state.tasks,collapsed:state.collapsed}))}
 function iso(d){return d?`${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`:''}
 function date(s){if(!s)return null;const m=String(s).match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);if(!m)return null;const y=Number(m[1]),mo=Number(m[2]),da=Number(m[3]),d=new Date(y,mo-1,da);return d.getFullYear()===y&&d.getMonth()===mo-1&&d.getDate()===da?d:null}
