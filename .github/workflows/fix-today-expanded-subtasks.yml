@@ -1,0 +1,36 @@
+name: Fix today expanded subtasks
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-today-expanded-subtasks.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Expand all descendants for matching today tasks
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          old="function visible(){const out=[],byParent=new Map();for(const t of state.tasks){const k=t.parentId||null;if(!byParent.has(k))byParent.set(k,[]);byParent.get(k).push(t)}for(const a of byParent.values())a.sort((x,y)=>(x.order||0)-(y.order||0));const kidsOf=id=>byParent.get(id||null)||[],memo=new Map();function hasMatch(t){if(memo.has(t.id))return memo.get(t.id);const v=match(t)||kidsOf(t.id).some(hasMatch);memo.set(t.id,v);return v}function visit(t,depth){const kids=kidsOf(t.id),self=match(t);if(state.filter==='today'){if(self)out.push({t,depth,kids});for(const c of kids)if(hasMatch(c))visit(c,self?depth+1:depth);return}if(self||kids.some(hasMatch))out.push({t,depth,kids});for(const c of kids)if(hasMatch(c))visit(c,depth+1)}for(const r of kidsOf(null))if(hasMatch(r))visit(r,0);return out}"
+          new="function visible(){const out=[],byParent=new Map();for(const t of state.tasks){const k=t.parentId||null;if(!byParent.has(k))byParent.set(k,[]);byParent.get(k).push(t)}for(const a of byParent.values())a.sort((x,y)=>(x.order||0)-(y.order||0));const kidsOf=id=>byParent.get(id||null)||[],memo=new Map();function hasMatch(t){if(memo.has(t.id))return memo.get(t.id);const v=match(t)||kidsOf(t.id).some(hasMatch);memo.set(t.id,v);return v}function pushAll(t,depth){const kids=kidsOf(t.id);out.push({t,depth,kids});for(const c of kids)pushAll(c,depth+1)}function visit(t,depth){const kids=kidsOf(t.id),self=match(t);if(state.filter==='today'){if(self){pushAll(t,depth);return}for(const c of kids)if(hasMatch(c))visit(c,depth);return}if(self||kids.some(hasMatch))out.push({t,depth,kids});for(const c of kids)if(hasMatch(c))visit(c,depth+1)}for(const r of kidsOf(null))if(hasMatch(r))visit(r,0);return out}"
+          assert old in s
+          s=s.replace(old,new,1)
+          assert "KEY='task-manager-v1'" in s
+          p.write_text(s,encoding='utf-8')
+          m=re.search(r'<script>([\s\S]*?)</script>',s)
+          assert m
+          Path('/tmp/app.js').write_text(m.group(1),encoding='utf-8')
+          PY
+          node --check /tmp/app.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Show all subtasks for matching today tasks"
+          git push
