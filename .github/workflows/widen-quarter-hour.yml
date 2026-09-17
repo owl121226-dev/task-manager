@@ -1,0 +1,71 @@
+name: Widen quarter-hour planner rows
+on:
+  push:
+    paths:
+      - '.github/workflows/widen-quarter-hour.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Widen planner rows and simplify cards
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          replacements = {
+            'height:704px;margin-left:72px;background-image:repeating-linear-gradient(to bottom,#e3e7eb 0 1px,transparent 1px 16px);background-size:100% 16px':
+            'height:1408px;margin-left:72px;background-image:repeating-linear-gradient(to bottom,#e3e7eb 0 1px,transparent 1px 32px);background-size:100% 32px',
+            'background-image:repeating-linear-gradient(to bottom,#cfd5dc 0 1px,transparent 1px 64px)':
+            'background-image:repeating-linear-gradient(to bottom,#cfd5dc 0 1px,transparent 1px 128px)',
+            'const PLAN_START=8*60,PLAN_END=19*60,PLAN_HOUR_PX=64;':
+            'const PLAN_START=8*60,PLAN_END=19*60,PLAN_HOUR_PX=128;',
+            '.scheduleInner{height:100%;display:flex;align-items:flex-start;gap:7px;padding:6px 7px 9px}':
+            '.scheduleInner{height:100%;display:flex;align-items:center;gap:7px;padding:4px 7px}',
+            '.scheduleCheck{width:16px;height:16px;margin:2px 0 0;flex:none}':
+            '.scheduleCheck{width:16px;height:16px;margin:0;flex:none}'
+          }
+          for old,new in replacements.items():
+            if old not in s:
+              raise SystemExit(f'missing anchor: {old}')
+            s=s.replace(old,new,1)
+
+          old="const meta=document.createElement('div');meta.className='scheduleMeta';meta.textContent=`${minutesToTime(start)} - ${minutesToTime(start+duration)}（${duration}分）`;text.append(nm,meta);"
+          new="text.append(nm);"
+          if old not in s:
+            raise SystemExit('schedule meta anchor missing')
+          s=s.replace(old,new,1)
+
+          old='enablePlannerDrag(drag,card,t,meta);enablePlannerResize(resize,card,t,meta);'
+          new='enablePlannerDrag(drag,card,t);enablePlannerResize(resize,card,t);'
+          if old not in s:
+            raise SystemExit('planner handler anchor missing')
+          s=s.replace(old,new,1)
+
+          s=s.replace('function enablePlannerDrag(handle,card,t,meta){','function enablePlannerDrag(handle,card,t){',1)
+          s=s.replace('function enablePlannerResize(handle,card,t,meta){','function enablePlannerResize(handle,card,t){',1)
+
+          drag_meta=";meta.textContent=`${minutesToTime(m)} - ${minutesToTime(m+duration)}（${duration}分）`"
+          resize_meta=";meta.textContent=`${minutesToTime(start)} - ${minutesToTime(start+d)}（${d}分）`"
+          if drag_meta not in s or resize_meta not in s:
+            raise SystemExit('meta update anchor missing')
+          s=s.replace(drag_meta,'',1).replace(resize_meta,'',1)
+
+          assert "KEY='task-manager-v1'" in s
+          p.write_text(s,encoding='utf-8')
+          m=re.search(r'<script>([\s\S]*?)</script>',s)
+          assert m
+          Path('/tmp/app.js').write_text(m.group(1),encoding='utf-8')
+          PY
+          node --check /tmp/app.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Widen 15-minute planner rows and show task names only"
+          git push
