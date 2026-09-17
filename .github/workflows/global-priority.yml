@@ -1,0 +1,92 @@
+name: Add global task priority
+on:
+  push:
+    paths:
+      - '.github/workflows/global-priority.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add shared priority across all views
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+
+          # Make high-priority rows visibly red in the normal/all views too.
+          old='.row.highPriority .left{background:#fff4f2}.row.highPriority .name{color:#b42318;font-weight:750}.row.highPriority .timeline{box-shadow:inset 4px 0 0 #f97066}'
+          new='.row.highPriority .left{background:#fff4f2}.row.highPriority .name{color:#b42318;font-weight:800}.row.highPriority .timeline{background-color:#fff4f2;box-shadow:inset 4px 0 0 #f97066}.mini.priorityStar.high{background:#fee4e2;color:#b42318;font-weight:800}'
+          if old not in s: raise SystemExit('priority css anchor missing')
+          s=s.replace(old,new,1)
+
+          # Migrate any existing per-day high priority to the shared task priority.
+          old="function load(){try{const x=JSON.parse(localStorage.getItem(KEY));if(x){state.tasks=flattenHierarchy((x.tasks||[]).map(t=>({...t,start:normalizeStored(t.start),end:normalizeStored(t.end)})));state.collapsed={};save()}}catch(e){}}"
+          new="function migratePriority(t){if(t.priority==='high')return t;const plans=t.dailyPlans||{};if(Object.values(plans).some(p=>p&&p.priority==='high'))t.priority='high';return t}\nfunction load(){try{const x=JSON.parse(localStorage.getItem(KEY));if(x){state.tasks=flattenHierarchy((x.tasks||[]).map(t=>migratePriority({...t,start:normalizeStored(t.start),end:normalizeStored(t.end)})));state.collapsed={};save()}}catch(e){}}"
+          if old not in s: raise SystemExit('load anchor missing')
+          s=s.replace(old,new,1)
+
+          old="state.tasks=flattenHierarchy(data.tasks.map(t=>({...t,start:normalizeStored(t.start),end:normalizeStored(t.end)})));state.collapsed={};"
+          new="state.tasks=flattenHierarchy(data.tasks.map(t=>migratePriority({...t,start:normalizeStored(t.start),end:normalizeStored(t.end)})));state.collapsed={};"
+          if old not in s: raise SystemExit('restore anchor missing')
+          s=s.replace(old,new,1)
+
+          # Shared priority helpers.
+          old="function todayOrder(t){const p=getTodayPlan(t);return Number.isFinite(p?.order)?p.order:(t.order||0)}"
+          new="function todayOrder(t){const p=getTodayPlan(t);return Number.isFinite(p?.order)?p.order:(t.order||0)}\nfunction isHighPriority(t){return t?.priority==='high'}\nfunction toggleHighPriority(t){t.priority=isHighPriority(t)?'':'high';if(t.dailyPlans)for(const p of Object.values(t.dailyPlans))if(p&&typeof p==='object')p.priority='';save();render()}"
+          if old not in s: raise SystemExit('todayOrder anchor missing')
+          s=s.replace(old,new,1)
+
+          # Today unplanned list uses shared priority.
+          old="function makeUnplannedItem(x,list){const t=x.t,p=getTodayPlan(t),el=document.createElement('div');el.className='unplannedItem'+(p?.priority==='high'?' high':'');"
+          new="function makeUnplannedItem(x,list){const t=x.t,p=getTodayPlan(t),high=isHighPriority(t),el=document.createElement('div');el.className='unplannedItem'+(high?' high':'');"
+          if old not in s: raise SystemExit('unplanned start anchor missing')
+          s=s.replace(old,new,1)
+          old="const pri=document.createElement('button');pri.className='uBtn'+(p?.priority==='high'?' high':'');pri.textContent=p?.priority==='high'?'高':'優先';pri.onclick=()=>{const q=getTodayPlan(t,true);q.priority=q.priority==='high'?'':'high';save();render()};"
+          new="const pri=document.createElement('button');pri.className='uBtn'+(high?' high':'');pri.textContent=high?'高':'優先';pri.onclick=()=>toggleHighPriority(t);"
+          if old not in s: raise SystemExit('unplanned priority anchor missing')
+          s=s.replace(old,new,1)
+
+          # Today scheduled cards use shared priority.
+          old="card.className='scheduleCard'+(x.depth?' sub':'')+(p.priority==='high'?' high':'')+(t.completed?' done':'');"
+          new="card.className='scheduleCard'+(x.depth?' sub':'')+(isHighPriority(t)?' high':'')+(t.completed?' done':'');"
+          if old not in s: raise SystemExit('schedule card class anchor missing')
+          s=s.replace(old,new,1)
+          old="const pri=document.createElement('button');pri.className='scheduleMini'+(p.priority==='high'?' high':'');pri.textContent=p.priority==='high'?'★':'☆';pri.title='高優先度';pri.onclick=()=>{p.priority=p.priority==='high'?'':'high';save();render()};"
+          new="const pri=document.createElement('button');pri.className='scheduleMini'+(isHighPriority(t)?' high':'');pri.textContent=isHighPriority(t)?'★':'☆';pri.title='重要度';pri.onclick=()=>toggleHighPriority(t);"
+          if old not in s: raise SystemExit('schedule priority anchor missing')
+          s=s.replace(old,new,1)
+
+          # Normal/all rows are highlighted and expose a star control.
+          old="function row(t,depth,kids){const r=document.createElement('div'),tp=state.filter==='today'?getTodayPlan(t):null;r.className='row'+(depth?' sub':'')+(t.completed?' done':'')+(tp?.priority==='high'?' highPriority':'');"
+          new="function row(t,depth,kids){const r=document.createElement('div'),high=isHighPriority(t);r.className='row'+(depth?' sub':'')+(t.completed?' done':'')+(high?' highPriority':'');"
+          if old not in s: raise SystemExit('row class anchor missing')
+          s=s.replace(old,new,1)
+          old="a.append(mini('＋','この下にタスクを追加',()=>openDlg(null,t.id)),mini('✎','編集',()=>openDlg(t.id)),mini('×','削除',()=>remove(t.id),'del'));"
+          new="a.append(mini(high?'★':'☆','重要度',()=>toggleHighPriority(t),'priorityStar'+(high?' high':'')),mini('＋','この下にタスクを追加',()=>openDlg(null,t.id)),mini('✎','編集',()=>openDlg(t.id)),mini('×','削除',()=>remove(t.id),'del'));"
+          if old not in s: raise SystemExit('row actions anchor missing')
+          s=s.replace(old,new,1)
+
+          # Keep any legacy Today table priority control consistent if reached.
+          old="function priorityCell(t){const d=document.createElement('div');d.className='priorityCell';const b=document.createElement('button'),p=getTodayPlan(t);b.className='priorityBtn'+(p?.priority==='high'?' high':'');b.textContent=p?.priority==='high'?'高':'通常';b.title='クリックで高優先度を切り替え';b.onclick=()=>{const x=getTodayPlan(t,true);x.priority=x.priority==='high'?'':'high';save();render()};d.appendChild(b);return d}"
+          new="function priorityCell(t){const d=document.createElement('div');d.className='priorityCell';const b=document.createElement('button'),high=isHighPriority(t);b.className='priorityBtn'+(high?' high':'');b.textContent=high?'高':'通常';b.title='クリックで重要度を切り替え';b.onclick=()=>toggleHighPriority(t);d.appendChild(b);return d}"
+          if old not in s: raise SystemExit('priorityCell anchor missing')
+          s=s.replace(old,new,1)
+
+          assert "KEY='task-manager-v1'" in s
+          p.write_text(s,encoding='utf-8')
+          m=re.search(r'<script>([\s\S]*?)</script>',s)
+          assert m
+          Path('/tmp/app.js').write_text(m.group(1),encoding='utf-8')
+          PY
+          node --check /tmp/app.js
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Add shared priority highlighting across views"
+          git push
